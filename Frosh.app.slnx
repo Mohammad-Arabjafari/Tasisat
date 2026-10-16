@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="FroshTasisat/FroshTasisat.csproj"/>
+  <Project Path="Frosh.Core/Frosh.Core.csproj"/>
+  <Project Path="Frosh.Data.InMemori/Frosh.Data.InMemori.csproj"/>
+</Solution>
