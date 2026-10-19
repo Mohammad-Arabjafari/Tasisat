@@ -11,15 +11,21 @@ public class FroshService
     private readonly IProductRepository _products;
     private readonly IProjectRepository _projects;
     private readonly IQuoteRepository _quotes;
+    private readonly IQuoteItemRepository _quoteItems;
 
-
-    public FroshService(IMemberRepository members, IProductRepository products, IProjectRepository projects, IQuoteRepository quote)
-    {
-        _members = members;
-        _products = products;
-        _projects = projects;
-        _quotes = quote;
-    }
+public FroshService(
+    IMemberRepository members,
+    IProductRepository products,
+    IProjectRepository projects,
+    IQuoteRepository quotes,
+    IQuoteItemRepository quoteItems)
+{
+    _members = members;
+    _products = products;
+    _projects = projects;
+    _quotes = quotes;
+    _quoteItems = quoteItems;
+}
     
         // ---------- Members ----------
 
@@ -33,18 +39,21 @@ public class FroshService
         return _members.GetById(id);
     }
 
-    public void AddMember(Member member)
-    {
-        ArgumentNullException.ThrowIfNull(member);
+   public void AddMember(Member member)
+{
+    ArgumentNullException.ThrowIfNull(member);
 
-        if (string.IsNullOrWhiteSpace(member.Name))
-        {
-            throw new ArgumentException("نام عضو الزامی است.");
-        }
+    if (string.IsNullOrWhiteSpace(member.Name))
+        throw new ArgumentException("نام عضو الزامی است.");
 
-        _members.Add(member);
-    }
+    if (string.IsNullOrWhiteSpace(member.City))
+        throw new ArgumentException("شهر عضو الزامی است.");
 
+    if (string.IsNullOrWhiteSpace(member.MemberType))
+        throw new ArgumentException("نوع عضو را انتخاب کنید.");
+
+    _members.Add(member);
+}
     public bool UpdateMember(Member member)
     {
         ArgumentNullException.ThrowIfNull(member);
@@ -69,17 +78,21 @@ public class FroshService
     {
         return _products.GetById(id);
     }
-    public void AddProduct(Product product)
-    {
-        ArgumentNullException.ThrowIfNull(product);
+public void AddProduct(Product product)
+{
+    ArgumentNullException.ThrowIfNull(product);
 
-        if (string.IsNullOrWhiteSpace(product.Name))
-        {
-            throw new ArgumentException("نام عضو الزامی است.");
-        }
+    if (string.IsNullOrWhiteSpace(product.Name))
+        throw new ArgumentException("نام محصول الزامی است.");
 
-        _products.Add(product);
-    }
+    if (product.UnitPrice <= 0)
+        throw new ArgumentException("قیمت محصول باید بیشتر از صفر باشد.");
+
+    if (string.IsNullOrWhiteSpace(product.Unit))
+        throw new ArgumentException("واحد محصول الزامی است.");
+
+    _products.Add(product);
+}
 
     // ---------- Projects ----------
 
@@ -92,6 +105,23 @@ public class FroshService
     {
         return _projects.GetById(id);
     }
+  
+    public void AddProject(Project project)
+    {
+    ArgumentNullException.ThrowIfNull(project);
+
+    if (string.IsNullOrWhiteSpace(project.Name))
+        throw new ArgumentException("نام پروژه الزامی است.");
+
+    if (string.IsNullOrWhiteSpace(project.Address))
+        throw new ArgumentException("آدرس پروژه الزامی است.");
+
+    if (_members.GetById(project.MemberId) is null)
+        throw new ArgumentException("عضو انتخاب‌شده در سیستم وجود ندارد.");
+
+    _projects.Add(project);
+    }
+
 
 
     // ---------- Quotes ----------
@@ -105,4 +135,81 @@ public class FroshService
     {
         return _quotes.GetById(id);
     }
+
+    public Quote CreateQuote(
+    Guid projectId,
+    PipePurpose pipePurpose,
+    PipeLayer pipeLayer,
+    IEnumerable<(Guid ProductId, decimal Quantity)> items)
+{
+    ArgumentNullException.ThrowIfNull(items);
+
+    var project = _projects.GetById(projectId);
+
+    if (project is null)
+        throw new ArgumentException("پروژه موردنظر پیدا نشد.");
+
+    var requestedItems = items.ToList();
+
+    if (requestedItems.Count == 0)
+        throw new ArgumentException("پیش‌فاکتور باید حداقل یک محصول داشته باشد.");
+
+    var quote = new Quote
+    {
+        ProjectId = projectId,
+        PipePurpose = pipePurpose,
+        PipeLayer = pipeLayer,
+        CreatedAt = DateTime.UtcNow,
+        Project = project
+    };
+
+    foreach (var requestedItem in requestedItems)
+    {
+        if (requestedItem.Quantity <= 0)
+            throw new ArgumentException("تعداد یا مقدار محصول باید بیشتر از صفر باشد.");
+
+        var product = _products.GetById(requestedItem.ProductId);
+
+        if (product is null)
+            throw new ArgumentException(
+                $"محصول با شناسه {requestedItem.ProductId} پیدا نشد.");
+
+        var quoteItem = new QuoteItem
+        {
+            QuoteId = quote.Id,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            Quantity = requestedItem.Quantity,
+            Quote = quote,
+            Product = product
+        };
+
+        quote.Items.Add(quoteItem);
+    }
+
+    // ابتدا تمام اطلاعات اعتبارسنجی شده‌اند.
+    _quotes.Add(quote);
+
+    try
+    {
+        foreach (var item in quote.Items)
+        {
+            _quoteItems.Add(item);
+        }
+    }
+    catch
+    {
+        // جلوگیری از باقی‌ماندن پیش‌فاکتور ناقص در صورت خطا
+        _quotes.Delete(quote.Id);
+
+        foreach (var item in quote.Items)
+        {
+            _quoteItems.Delete(item.Id);
+        }
+
+        throw;
+    }
+
+    return quote;
+}
 }

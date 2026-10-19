@@ -1,35 +1,52 @@
 
-using Frosh.Core.Common;
 using Frosh.Core.Entities;
 using Frosh.Core.Interface;
+
 namespace Frosh.Data.InMemori.Repository;
 
 public class ProductRepository : IProductRepository
 {
-    void IRepository<Product, Guid>.Add(Product entity)
+    private readonly List<Product> _products = new();
+
+    public void Add(Product entity)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(entity);
+
+        _products.Add(entity);
     }
 
-    bool IRepository<Product, Guid>.Delete(Guid id)
+    public bool Delete(Guid id)
     {
-        throw new NotImplementedException();
+        var product = GetById(id);
+
+        if (product is null)
+            return false;
+
+        return _products.Remove(product);
     }
 
-    IEnumerable<Product> IRepository<Product, Guid>.GetAll()
+    public IEnumerable<Product> GetAll()
     {
-        throw new NotImplementedException();
+        return _products;
     }
 
-    Product? IRepository<Product, Guid>.GetById(Guid id)
+    public Product? GetById(Guid id)
     {
-        throw new NotImplementedException();
+        return _products.FirstOrDefault(product => product.Id == id);
     }
 
-    bool IRepository<Product, Guid>.Update(Product entity)
+    public bool Update(Product entity)
     {
-        throw new NotImplementedException();
-    }
+        ArgumentNullException.ThrowIfNull(entity);
 
+        var index = _products.FindIndex(product => product.Id == entity.Id);
+
+        if (index == -1)
+            return false;
+
+        _products[index] = entity;
+
+        return true;
+    }
 }
 
