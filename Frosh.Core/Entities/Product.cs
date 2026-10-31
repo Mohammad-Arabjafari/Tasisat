@@ -7,8 +7,7 @@ public class Product : Entity<Guid>
     {
     }
     public string Name { get; set; }
-    public string PipePurpose { get; set; }
-    public string PipeLayer { get; set; }
+   
     public decimal UnitPrice { get; set; }
     public bool IsActive { get; set; } = true;
     public string Unit { get; set; }

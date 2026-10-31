@@ -3,9 +3,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Frosh.Core\Frosh.Core.csproj" />
     <ProjectReference Include="..\Frosh.Data.InMemori\Frosh.Data.InMemori.csproj" />
+    <ProjectReference Include="..\Frosh.Data.SqlServer\Frosh.Data.SqlServer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Spectre.Console" />
   </ItemGroup>
 

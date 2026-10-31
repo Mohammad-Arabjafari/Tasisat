@@ -1,5 +1,5 @@
-using Frosh.Core.Entities;
 using Frosh.Core.Common;
+
 namespace Frosh.Core.Entities;
 
 public class QuoteItem : Entity<Guid>

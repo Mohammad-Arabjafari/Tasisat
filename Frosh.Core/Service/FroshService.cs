@@ -11,20 +11,19 @@ public class FroshService
     private readonly IProductRepository _products;
     private readonly IProjectRepository _projects;
     private readonly IQuoteRepository _quotes;
-    private readonly IQuoteItemRepository _quoteItems;
+   
 
 public FroshService(
     IMemberRepository members,
     IProductRepository products,
     IProjectRepository projects,
-    IQuoteRepository quotes,
-    IQuoteItemRepository quoteItems)
+    IQuoteRepository quotes )
 {
     _members = members;
     _products = products;
     _projects = projects;
     _quotes = quotes;
-    _quoteItems = quoteItems;
+    
 }
     
         // ---------- Members ----------
@@ -136,7 +135,7 @@ public void AddProduct(Product product)
         return _quotes.GetById(id);
     }
 
-    public Quote CreateQuote(
+   public Quote CreateQuote(
     Guid projectId,
     PipePurpose pipePurpose,
     PipeLayer pipeLayer,
@@ -187,28 +186,8 @@ public void AddProduct(Product product)
         quote.Items.Add(quoteItem);
     }
 
-    // ابتدا تمام اطلاعات اعتبارسنجی شده‌اند.
+    // ذخیره پیش‌فاکتور و تمام اقلام آن با یک عملیات
     _quotes.Add(quote);
-
-    try
-    {
-        foreach (var item in quote.Items)
-        {
-            _quoteItems.Add(item);
-        }
-    }
-    catch
-    {
-        // جلوگیری از باقی‌ماندن پیش‌فاکتور ناقص در صورت خطا
-        _quotes.Delete(quote.Id);
-
-        foreach (var item in quote.Items)
-        {
-            _quoteItems.Delete(item.Id);
-        }
-
-        throw;
-    }
 
     return quote;
 }
