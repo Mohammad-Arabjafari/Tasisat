@@ -58,15 +58,30 @@ namespace Frosh.Data.SqlServer.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<int>("Layer")
+                    b.Property<int?>("Layer")
                         .HasColumnType("int");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("Purpose")
+                    b.Property<string>("PackagingNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ProductCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("Purpose")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("QuantityPerBox")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("QuantityPerCarton")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Specification")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Unit")
                         .IsRequired()
@@ -142,11 +157,18 @@ namespace Frosh.Data.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ProductSpecification")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal>("Quantity")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<Guid>("QuoteId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 

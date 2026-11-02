@@ -7,7 +7,7 @@ public class Quote : Entity<Guid>
     public Quote() : base(Guid.NewGuid())
     {
     }
-
+    public decimal TotalPrice => Items.Sum(item => item.TotalPrice);
     public Guid ProjectId { get; set; }
 
     public PipePurpose PipePurpose { get; set; }

@@ -1,7 +1,7 @@
 
 using Frosh.Core.Entities;
 using Frosh.Core.Interface;
-
+using System.Linq;
 namespace Frosh.Data.InMemori.Repository;
 
 public class ProductRepository : IProductRepository
@@ -48,5 +48,31 @@ public class ProductRepository : IProductRepository
 
         return true;
     }
+    public void AddOrUpdateFromExcel(Product product)
+{
+    ArgumentNullException.ThrowIfNull(product);
+
+    if (string.IsNullOrWhiteSpace(product.ProductCode))
+        throw new ArgumentException("کد محصول معتبر نیست.");
+
+    var existingProduct = GetAll()
+        .FirstOrDefault(p =>
+            string.Equals(
+                p.ProductCode?.Trim(),
+                product.ProductCode.Trim(),
+                StringComparison.OrdinalIgnoreCase));
+
+    if (existingProduct is null)
+    {
+        Add(product);
+    }
+    else
+    {
+        existingProduct.UnitPrice = product.UnitPrice;
+        existingProduct.Specification = product.Specification;
+
+        Update(existingProduct);
+    }
+}
 }
 

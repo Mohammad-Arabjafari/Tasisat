@@ -1,10 +1,20 @@
-﻿using Spectre.Console;
+﻿using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+
+using Spectre.Console;
 using Frosh.Core.Entities;
+
 using Frosh.Core.Interface;
 using Frosh.Core.Service;
+
 using Frosh.Data.SqlServer.Context;
 using Frosh.Data.SqlServer.Repository;
+using Frosh.Data.InMemori.Import;
+
 using Microsoft.EntityFrameworkCore;
+
 
 // ==========================================
 // 1. اتصال به SQL Server
@@ -25,8 +35,11 @@ using var dbContext = new AppDbContext(options);
 // ==========================================
 
 IMemberRepository memberRepository = new MemberRepository(dbContext);
+
 IProductRepository productRepository = new ProductRepository(dbContext);
+
 IProjectRepository projectRepository = new ProjectRepository(dbContext);
+
 IQuoteRepository quoteRepository = new QuoteRepository(dbContext);
 
 
@@ -92,7 +105,7 @@ while (running)
             break;
 
         case "🧾 ثبت پیش‌فاکتور":
-            CreateQuoteMenu();
+            CreateQuoteMenu(froshService);
             break;
 
         case "🏗️ ثبت پروژه جدید":
@@ -104,11 +117,11 @@ while (running)
             break;
 
         case "📄 نمایش پیش‌فاکتورها":
-            ShowQuotes();
+            ShowQuotes(froshService);
             break;
 
         case "📥 ورود محصولات از اکسل":
-            ImportProductsFromExcel();
+            ImportProductsFromExcel(froshService);
             break;
 
         case "🚪 خروج":
@@ -184,8 +197,8 @@ void ShowProducts()
         table.AddRow(
             row.ToString(),
             Markup.Escape(product.Name ?? ""),
-            product.Purpose.ToString(),
-            product.Layer.ToString(),
+            product.Purpose?.ToString() ?? "-",
+            product.Layer?.ToString() ?? "-",
             Markup.Escape(product.Unit ?? ""),
             product.UnitPrice.ToString("N0"),
             product.IsActive ? "[green]فعال[/]" : "[red]غیرفعال[/]"
@@ -306,16 +319,13 @@ void ShowProjects()
 // نمایش پیش‌فاکتورها
 // ==========================================
 
-void ShowQuotes()
+ void ShowQuotes(FroshService froshService)
 {
     var quotes = froshService.GetAllQuotes().ToList();
 
     if (quotes.Count == 0)
     {
-        AnsiConsole.MarkupLine(
-            "[yellow]هنوز پیش‌فاکتوری ثبت نشده است.[/]"
-        );
-
+        AnsiConsole.MarkupLine("[yellow]هیچ پیش‌فاکتوری ثبت نشده است.[/]");
         Pause();
         return;
     }
@@ -323,34 +333,54 @@ void ShowQuotes()
     var table = new Table();
 
     table.Border(TableBorder.Rounded);
-    table.Title("[bold cyan]فهرست پیش‌فاکتورها[/]");
 
-    table.AddColumn("ردیف");
+    table.AddColumn("شماره");
     table.AddColumn("شناسه پیش‌فاکتور");
-    table.AddColumn("شناسه پروژه");
-    table.AddColumn("کاربرد");
-    table.AddColumn("نوع لوله");
-    table.AddColumn("تاریخ");
+    table.AddColumn("نام مشتری");
+    table.AddColumn("نام پروژه");
+    table.AddColumn("تاریخ ثبت");
+    table.AddColumn("مبلغ کل");
 
-    int row = 1;
-
-    foreach (var quote in quotes)
+    for (int i = 0; i < quotes.Count; i++)
     {
-        table.AddRow(
-            row.ToString(),
-            quote.Id.ToString(),
-            quote.ProjectId.ToString(),
-            quote.PipePurpose.ToString(),
-            quote.PipeLayer.ToString(),
-            quote.CreatedAt.ToLocalTime().ToString("yyyy/MM/dd")
-        );
+        var quote = quotes[i];
 
-        row++;
+        table.AddRow(
+            (i + 1).ToString(),
+            quote.Id.ToString(),
+            quote.Project?.Member?.Name ?? "نامشخص",
+            quote.Project?.Name ?? "نامشخص",
+            quote.CreatedAt.ToLocalTime().ToString("yyyy/MM/dd"),
+            $"{quote.TotalPrice:N0} ریال"
+        );
     }
 
     AnsiConsole.Write(table);
 
-    Pause();
+    // انتخاب پیش‌فاکتور برای مشاهده جزئیات
+    var choices = quotes
+        .Select((quote, index) =>
+            $"{index + 1} - {quote.Project?.Name ?? "بدون نام"} - {quote.TotalPrice:N0} ریال")
+        .ToList();
+
+    choices.Add("بازگشت");
+
+    var selectedQuote = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title("پیش‌فاکتوری را برای مشاهده جزئیات انتخاب کنید:")
+            .PageSize(15)
+            .AddChoices(choices)
+    );
+
+    if (selectedQuote == "بازگشت")
+        return;
+
+    int selectedIndex = choices.IndexOf(selectedQuote);
+
+    if (selectedIndex >= 0 && selectedIndex < quotes.Count)
+    {
+        ShowQuoteDetails(quotes[selectedIndex]);
+    }
 }
 
 
@@ -555,16 +585,14 @@ void AddProject()
 // ثبت پیش‌فاکتور
 // ==========================================
 
-void CreateQuoteMenu()
+ void CreateQuoteMenu(FroshService froshService)
 {
+    // 1. انتخاب پروژه
     var projects = froshService.GetAllProjects().ToList();
 
-    if (projects.Count == 0)
+    if (!projects.Any())
     {
-        AnsiConsole.MarkupLine(
-            "[yellow]ابتدا باید یک پروژه ثبت کنید.[/]"
-        );
-
+        AnsiConsole.MarkupLine("[red]هیچ پروژه‌ای ثبت نشده است.[/]");
         Pause();
         return;
     }
@@ -572,118 +600,129 @@ void CreateQuoteMenu()
     var selectedProject = AnsiConsole.Prompt(
         new SelectionPrompt<Project>()
             .Title("انتخاب پروژه:")
+            .PageSize(10)
             .UseConverter(p => p.Name)
             .AddChoices(projects)
     );
 
+    // 2. انتخاب نوع لوله
     var purpose = AnsiConsole.Prompt(
         new SelectionPrompt<PipePurpose>()
-            .Title("انتخاب کاربرد لوله:")
-            .AddChoices(Enum.GetValues<PipePurpose>())
-    );
-
-    var layer = AnsiConsole.Prompt(
-        new SelectionPrompt<PipeLayer>()
             .Title("انتخاب نوع لوله:")
-            .AddChoices(Enum.GetValues<PipeLayer>())
+            .AddChoices(PipePurpose.Water, PipePurpose.Sewage)
     );
 
+    // 3. انتخاب لایه (فقط برای آب)
+    PipeLayer layer = PipeLayer.SingleLayer;
+
+    if (purpose == PipePurpose.Water)
+    {
+        layer = AnsiConsole.Prompt(
+            new SelectionPrompt<PipeLayer>()
+                .Title("انتخاب نوع لایه:")
+                .AddChoices(PipeLayer.SingleLayer, PipeLayer.FiveLayer)
+        );
+    }
+
+    // 4. دریافت محصولات فعال
     var products = froshService.GetAllProducts()
-        .Where(p =>
-            p.IsActive &&
-            p.Purpose == purpose &&
-            p.Layer == layer)
+        .Where(p => p.IsActive)
         .ToList();
 
-    if (products.Count == 0)
+    if (!products.Any())
     {
-        AnsiConsole.MarkupLine(
-            "[yellow]محصولی با این مشخصات پیدا نشد.[/]"
-        );
-
+        AnsiConsole.MarkupLine("[red]هیچ محصول فعالی ثبت نشده است.[/]");
         Pause();
         return;
     }
 
+    // 5. لیست اقلام پیش‌فاکتور
     var selectedItems = new List<(Guid ProductId, decimal Quantity)>();
 
     while (true)
     {
-        var choices = products
+        // گروه‌بندی محصولات بر اساس نام
+        var productNames = products
             .Select(p => p.Name)
+            .Distinct()
+            .OrderBy(name => name)
             .ToList();
 
-        choices.Add("پایان انتخاب محصولات");
+        const string finishOption = "🟢 پایان انتخاب و ثبت پیش‌فاکتور";
 
-        var selectedName = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("انتخاب محصول:")
-                .AddChoices(choices)
-        );
+        // گزینه پایان همیشه آخرین گزینه است
+        productNames.Add(finishOption);
 
-        if (selectedName == "پایان انتخاب محصولات")
-            break;
+        // ساخت منوی انتخاب گروه محصول
+        var prompt = new SelectionPrompt<string>();
+        prompt.Title("انتخاب گروه محصول:");
+        prompt.PageSize(15);
+        prompt.HighlightStyle(new Style(Color.Green));
+        prompt.AddChoices(productNames);
 
-        var selectedProduct = products.First(
-            p => p.Name == selectedName
-        );
+        string selectedName = AnsiConsole.Prompt(prompt);
 
-        decimal quantity = AnsiConsole.Ask<decimal>(
-            $"مقدار {selectedProduct.Name}:"
-        );
-
-        if (quantity <= 0)
+        // بررسی انتخاب گزینه پایان
+        if (selectedName == finishOption)
         {
-            AnsiConsole.MarkupLine(
-                "[red]مقدار باید بیشتر از صفر باشد.[/]"
-            );
+            break;
+        }
 
+        // 6. نمایش سایزهای گروه انتخاب‌شده
+        var productSizes = products
+            .Where(p => p.Name == selectedName)
+            .ToList();
+
+        if (!productSizes.Any())
+        {
             continue;
         }
 
-        selectedItems.Add(
-            (selectedProduct.Id, quantity)
+        var selectedProduct = AnsiConsole.Prompt(
+            new SelectionPrompt<Product>()
+                .Title($"انتخاب سایز {selectedName}:")
+                .PageSize(15)
+                .UseConverter(p =>
+                    $"{p.Specification ?? "بدون مشخصات"} | {p.UnitPrice:N0} ریال")
+                .AddChoices(productSizes)
         );
 
-        products.Remove(selectedProduct);
+        // 7. دریافت تعداد
+        decimal quantity = AnsiConsole.Prompt(
+            new TextPrompt<decimal>("تعداد موردنظر را وارد کنید:")
+                .Validate(q =>
+                    q > 0
+                        ? ValidationResult.Success()
+                        : ValidationResult.Error("[red]تعداد باید بیشتر از صفر باشد.[/]"))
+        );
 
-        if (products.Count == 0)
-            break;
+        // 8. اضافه کردن محصول به پیش‌فاکتور
+        selectedItems.Add((selectedProduct.Id, quantity));
+
+        AnsiConsole.MarkupLine(
+            $"[green]محصول {selectedProduct.Name} با موفقیت اضافه شد.[/]");
+
+        AnsiConsole.WriteLine();
     }
 
-    if (selectedItems.Count == 0)
+    // 9. بررسی اینکه حداقل یک محصول انتخاب شده باشد
+    if (!selectedItems.Any())
     {
-        AnsiConsole.MarkupLine(
-            "[yellow]هیچ محصولی انتخاب نشده است.[/]"
-        );
-
+        AnsiConsole.MarkupLine("[yellow]هیچ محصولی انتخاب نشد.[/]");
         Pause();
         return;
     }
 
-    try
-    {
-        var quote = froshService.CreateQuote(
-            selectedProject.Id,
-            purpose,
-            layer,
-            selectedItems
-        );
+    // 10. ثبت پیش‌فاکتور
+    froshService.CreateQuote(
+        selectedProject.Id,
+        purpose,
+        layer,
+        selectedItems
+    );
 
-        AnsiConsole.MarkupLine(
-            $"\n[bold green]پیش‌فاکتور با موفقیت ثبت شد.[/]"
-        );
-
-        AnsiConsole.MarkupLine(
-            $"شناسه پیش‌فاکتور: {quote.Id}"
-        );
-    }
-    catch (Exception ex)
-    {
-        AnsiConsole.MarkupLine(
-            $"[red]خطا: {Markup.Escape(ex.Message)}[/]"
-        );
-    }
+    AnsiConsole.MarkupLine(
+        "[bold green]پیش‌فاکتور با موفقیت ثبت شد![/]");
 
     Pause();
 }
@@ -693,19 +732,82 @@ void CreateQuoteMenu()
 // ورود محصولات از اکسل
 // ==========================================
 
-void ImportProductsFromExcel()
+static void ImportProductsFromExcel(FroshService froshService)
 {
-    AnsiConsole.MarkupLine(
-        "[yellow]بخش ورود محصولات از اکسل هنوز به Repositoryهای SQL متصل نشده است.[/]"
-    );
+    try
+    {
+        var importer = new ExcelProductImporter();
+
+        string filePath = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory,
+            "لیست_قیمت_نیوپایپ_تبدیل_به_اکسل.xlsx"
+        );
+
+        var products = importer.ReadProducts(filePath);
+
+        froshService.ImportProductsFromExcel(products);
+
+        AnsiConsole.MarkupLine(
+            $"[green]عملیات ورود {products.Count} محصول با موفقیت انجام شد.[/]"
+        );
+    }
+    catch (Exception ex)
+    {
+        AnsiConsole.MarkupLine(
+            $"[red]خطا: {Markup.Escape(ex.ToString())}[/]"
+        );
+    }
 
     AnsiConsole.MarkupLine(
-        "[grey]این قسمت را پس از تست اتصال دیتابیس تکمیل می‌کنیم.[/]"
+        "\nبرای ادامه یک کلید بزنید..."
     );
+
+    Console.ReadKey(true);
+}
+ void ShowQuoteDetails(Quote quote)
+{
+    AnsiConsole.Clear();
+
+    AnsiConsole.Write(
+        new Rule("[bold green]جزئیات پیش‌فاکتور[/]")
+            .RuleStyle("green")
+    );
+
+    AnsiConsole.MarkupLine($"[bold]شناسه:[/] {quote.Id}");
+    AnsiConsole.MarkupLine($"[bold]نام پروژه:[/] {quote.Project?.Name ?? "نامشخص"}");
+    AnsiConsole.MarkupLine($"[bold]نام مشتری:[/] {quote.Project?.Member?.Name ?? "نامشخص"}");
+    AnsiConsole.MarkupLine($"[bold]تاریخ ثبت:[/] {quote.CreatedAt.ToLocalTime():yyyy/MM/dd}");
+
+    var table = new Table();
+
+    table.Border(TableBorder.Rounded);
+
+    table.AddColumn("ردیف");
+    table.AddColumn("نام محصول و سایز");
+    table.AddColumn("تعداد");
+    table.AddColumn("قیمت واحد");
+    table.AddColumn("مبلغ کل");
+
+    for (int i = 0; i < quote.Items.Count; i++)
+    {
+        var item = quote.Items[i];
+
+        table.AddRow(
+            (i + 1).ToString(),
+            $"{item.ProductName} - {item.ProductSpecification}",
+            item.Quantity.ToString("N2"),
+            $"{item.UnitPrice:N0} ریال",
+            $"{item.TotalPrice:N0} ریال"
+        );
+    }
+
+    AnsiConsole.Write(table);
+
+    AnsiConsole.MarkupLine(
+        $"[bold green]مبلغ نهایی: {quote.TotalPrice:N0} ریال[/]");
 
     Pause();
 }
-
 
 // ==========================================
 // توقف برنامه

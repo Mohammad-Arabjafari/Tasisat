@@ -14,15 +14,11 @@ public class ProductRepository : IProductRepository
         _context = context;
     }
 
-    // دریافت تمام کالاها
     public IEnumerable<Product> GetAll()
     {
-        return _context.Products
-            .AsNoTracking()
-            .ToList();
+        return _context.Products.AsNoTracking().ToList();
     }
 
-    // دریافت کالا با شناسه
     public Product? GetById(Guid id)
     {
         return _context.Products
@@ -30,7 +26,6 @@ public class ProductRepository : IProductRepository
             .FirstOrDefault(p => p.Id == id);
     }
 
-    // افزودن کالا
     public void Add(Product entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
@@ -39,7 +34,6 @@ public class ProductRepository : IProductRepository
         _context.SaveChanges();
     }
 
-    // ویرایش کالا
     public bool Update(Product entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
@@ -49,15 +43,12 @@ public class ProductRepository : IProductRepository
         if (existingProduct is null)
             return false;
 
-        _context.Entry(existingProduct)
-            .CurrentValues.SetValues(entity);
+        _context.Entry(existingProduct).CurrentValues.SetValues(entity);
 
         _context.SaveChanges();
-
         return true;
     }
 
-    // حذف کالا
     public bool Delete(Guid id)
     {
         var product = _context.Products.Find(id);
@@ -69,5 +60,32 @@ public class ProductRepository : IProductRepository
         _context.SaveChanges();
 
         return true;
+    }
+
+    // ورود محصول از اکسل
+    public void AddOrUpdateFromExcel(Product product)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+
+        if (string.IsNullOrWhiteSpace(product.ProductCode))
+            throw new ArgumentException("کد محصول معتبر نیست.");
+
+        string code = product.ProductCode.Trim();
+
+        var existingProduct = _context.Products
+            .FirstOrDefault(p => p.ProductCode == code);
+
+        if (existingProduct is null)
+        {
+            product.ProductCode = code;
+            _context.Products.Add(product);
+        }
+        else
+        {
+            existingProduct.UnitPrice = product.UnitPrice;
+            existingProduct.Specification = product.Specification;
+        }
+
+        _context.SaveChanges();
     }
 }

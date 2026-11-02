@@ -11,7 +11,7 @@ public class FroshService
     private readonly IProductRepository _products;
     private readonly IProjectRepository _projects;
     private readonly IQuoteRepository _quotes;
-   
+
 
 public FroshService(
     IMemberRepository members,
@@ -23,9 +23,9 @@ public FroshService(
     _products = products;
     _projects = projects;
     _quotes = quotes;
-    
+
 }
-    
+
         // ---------- Members ----------
 
     public IEnumerable<Member> GetAllMembers()
@@ -77,20 +77,40 @@ public FroshService(
     {
         return _products.GetById(id);
     }
-public void AddProduct(Product product)
-{
-    ArgumentNullException.ThrowIfNull(product);
+    public void AddProduct(Product product)
+    {
+        ArgumentNullException.ThrowIfNull(product);
 
-    if (string.IsNullOrWhiteSpace(product.Name))
-        throw new ArgumentException("نام محصول الزامی است.");
+        if (string.IsNullOrWhiteSpace(product.Name))
+            throw new ArgumentException("نام محصول الزامی است.");
 
-    if (product.UnitPrice <= 0)
-        throw new ArgumentException("قیمت محصول باید بیشتر از صفر باشد.");
+        if (product.UnitPrice <= 0)
+            throw new ArgumentException("قیمت محصول باید بیشتر از صفر باشد.");
 
-    if (string.IsNullOrWhiteSpace(product.Unit))
-        throw new ArgumentException("واحد محصول الزامی است.");
+        if (string.IsNullOrWhiteSpace(product.Unit))
+            throw new ArgumentException("واحد محصول الزامی است.");
 
-    _products.Add(product);
+        _products.Add(product);
+    }
+    // ---------- Excel Import ----------
+
+    public void ImportProductsFromExcel(IEnumerable<Product> products)
+    {
+    ArgumentNullException.ThrowIfNull(products);
+
+    foreach (var product in products)
+    {
+        if (string.IsNullOrWhiteSpace(product.ProductCode))
+            throw new ArgumentException("کد محصول الزامی است.");
+
+        if (string.IsNullOrWhiteSpace(product.Name))
+            throw new ArgumentException( $"نام محصول با کد {product.ProductCode} خالی است.");
+
+        if (product.UnitPrice <= 0)
+            throw new ArgumentException( $"قیمت محصول با کد {product.ProductCode} معتبر نیست.");
+
+        _products.AddOrUpdateFromExcel(product);
+    }
 }
 
     // ---------- Projects ----------
@@ -104,7 +124,7 @@ public void AddProduct(Product product)
     {
         return _projects.GetById(id);
     }
-  
+
     public void AddProject(Project project)
     {
     ArgumentNullException.ThrowIfNull(project);
@@ -135,7 +155,7 @@ public void AddProduct(Product product)
         return _quotes.GetById(id);
     }
 
-   public Quote CreateQuote(
+public Quote CreateQuote(
     Guid projectId,
     PipePurpose pipePurpose,
     PipeLayer pipeLayer,
@@ -143,35 +163,38 @@ public void AddProduct(Product product)
 {
     ArgumentNullException.ThrowIfNull(items);
 
+    // بررسی وجود پروژه
     var project = _projects.GetById(projectId);
 
     if (project is null)
         throw new ArgumentException("پروژه موردنظر پیدا نشد.");
 
+    // تبدیل اقلام به لیست
     var requestedItems = items.ToList();
 
     if (requestedItems.Count == 0)
         throw new ArgumentException("پیش‌فاکتور باید حداقل یک محصول داشته باشد.");
 
+    // ساخت پیش‌فاکتور
     var quote = new Quote
     {
         ProjectId = projectId,
         PipePurpose = pipePurpose,
         PipeLayer = pipeLayer,
-        CreatedAt = DateTime.UtcNow,
-        Project = project
+        CreatedAt = DateTime.UtcNow
     };
 
+    // افزودن اقلام پیش‌فاکتور
     foreach (var requestedItem in requestedItems)
     {
         if (requestedItem.Quantity <= 0)
-            throw new ArgumentException("تعداد یا مقدار محصول باید بیشتر از صفر باشد.");
+            throw new ArgumentException(  "تعداد یا مقدار محصول باید بیشتر از صفر باشد.");
 
+        // دریافت محصول برای بررسی وجود و ثبت اطلاعات آن
         var product = _products.GetById(requestedItem.ProductId);
 
         if (product is null)
-            throw new ArgumentException(
-                $"محصول با شناسه {requestedItem.ProductId} پیدا نشد.");
+            throw new ArgumentException(  $"محصول با شناسه {requestedItem.ProductId} پیدا نشد.");
 
         var quoteItem = new QuoteItem
         {
@@ -179,14 +202,13 @@ public void AddProduct(Product product)
             ProductId = product.Id,
             ProductName = product.Name,
             Quantity = requestedItem.Quantity,
-            Quote = quote,
-            Product = product
+            UnitPrice = product.UnitPrice,
+           ProductSpecification = product.Specification ?? string.Empty,
         };
-
         quote.Items.Add(quoteItem);
     }
 
-    // ذخیره پیش‌فاکتور و تمام اقلام آن با یک عملیات
+    // ذخیره پیش‌فاکتور و اقلام آن
     _quotes.Add(quote);
 
     return quote;

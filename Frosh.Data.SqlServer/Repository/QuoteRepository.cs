@@ -18,7 +18,11 @@ public class QuoteRepository : IQuoteRepository
     {
         return _context.Quotes
             .AsNoTracking()
+            .Include(q => q.Project)
+                .ThenInclude(p => p!.Member)
             .Include(q => q.Items)
+                .ThenInclude(i => i.Product)
+            .OrderByDescending(q => q.CreatedAt)
             .ToList();
     }
 
@@ -26,7 +30,10 @@ public class QuoteRepository : IQuoteRepository
     {
         return _context.Quotes
             .AsNoTracking()
+            .Include(q => q.Project)
+                .ThenInclude(p => p!.Member)
             .Include(q => q.Items)
+                .ThenInclude(i => i.Product)
             .FirstOrDefault(q => q.Id == id);
     }
 
